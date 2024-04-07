@@ -31,6 +31,7 @@ Specific types of a specific class can be exported with the `-c` or `--class` fl
 
 Type classes that can be exported are:
 * `BaseType`: Base types such as `int`, `unsigned char` or `float`
+* `UnspecifiedType`: Unspecified type such as `void`
 * `ClassType`: Classes
 * `EnumerationType`: Enumerations
 * `StructureType`: Structs
@@ -120,6 +121,7 @@ Invoking `DebugExtraction.py` creates a `JSON` file with the extracted Debug inf
 The `JSON` file is structured as a JSON Array containing a JSON Object for every exported type. The exported types are based on the DWARF Standard Debug TAGs and represent a subset thereof. Currently, the following types and objects are supported:
 
 * [Base](#base-type)
+* [Unspecified](#unspecifed-type)
 * [Typedef](#typedef)
 * [Structure](#structure-union-and-class)
 * [Union](#structure-union-and-class)
@@ -178,6 +180,12 @@ The most common values for `"datatype"` are:
 * `"float"`: A floating point number.
 
 Other, less common values are `"address"`, `"complex float"`, `"imaginary float"`, `"packed decimal"`, `"numerical string"`, `"edited"`, `"fixed"`, `"ufixed"`, `"decimal float"`, `"UTF"`, `"UCS"` and `"ASCII"`. Note that they only represent a subset of possible DWARF types. If the type is any other DWARF type or if the encoding of the base type is unknown, the `"datatype"` is set to `"Unknown"`.
+
+### Unspecified Type
+
+An unspecified type entry has the following properties:
+* `"datatype": "unspecified"`
+* `"name"`: A string providing a name for the unspecified data type.
 
 ### Typedef
 

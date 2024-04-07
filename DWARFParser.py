@@ -409,6 +409,31 @@ class TypeParser:
     def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
       return str(self.name)
 
+  class UnspecifiedType(AbstractType):
+    DW_TAG = 'DW_TAG_unspecified_type'
+    IGNORED_ATTRIBUTES = []
+    TYPED_ATTR_NAMES = []
+    def __init__(self) -> None:
+      super().__init__()
+
+    def parse(self, die: DIE, parser: TypeParser):
+      super().parse(die, parser)
+      TypeParser.Named.parse(self, die, parser, mandatory=True)
+
+    def __eq__(self, __value: TypeParser.UnspecifiedType) -> bool:
+      if not isinstance(__value, TypeParser.UnspecifiedType):
+        return NotImplemented
+      return all([c.__eq__(self, __value) for c in TypeParser.UnspecifiedType.__bases__])
+
+    def __hash__(self) -> int:
+      return hash((tuple([c.__hash__(self) for c in TypeParser.UnspecifiedType.__bases__])))
+
+    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+      return f"UnspecifiedType({self.name})"
+
+    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+      return str(self.name)
+
   class TypeDefType(AbstractType, Accessible, Aligned, Declarable, Typed, Named):
     DW_TAG = 'DW_TAG_typedef'
     IGNORED_ATTRIBUTES = ['DW_AT_allocated', 'DW_AT_associated', 'DW_AT_data_location', 'DW_AT_start_scope',

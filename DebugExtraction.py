@@ -51,6 +51,7 @@ class DebugInfoExporter:
     "SubroutineType"      : TypeParser.SubroutineType,
     "TypeDefType"         : TypeParser.TypeDefType,
     "UnionType"           : TypeParser.UnionType,
+    "UnspecifiedType"     : TypeParser.UnspecifiedType,
     "Variable"            : TypeParser.Variable,
   }
 
@@ -90,6 +91,16 @@ class DebugInfoExporter:
     if unpack and baseType.name is not None:
       desc["name"] = baseType.name
     desc["datawidth"] = baseType.byte_size()
+    return desc
+  
+  def _export_unspecifiedType(self,
+                              unspecifiedType: TypeParser.UnspecifiedType,
+                              unpack: bool,
+                              mappings: set[TypeParser.AbstractTAG] = set()
+                              ) -> JSONObject:
+    desc = {}
+    desc["datatype"] = "unspecified"
+    desc["name"] = unspecifiedType.name
     return desc
 
   def _export_typeDefType(self,
@@ -358,6 +369,8 @@ class DebugInfoExporter:
     desc: JSONObject = {}
     if isinstance(type, TypeParser.BaseType):
       desc = self._export_baseType(type, unpack, mappings)
+    elif isinstance(type, TypeParser.UnspecifiedType):
+      desc = self._export_unspecifiedType(type, unpack, mappings)
     elif isinstance(type, TypeParser.TypeDefType):
       desc = self._export_typeDefType(type, unpack, mappings)
     elif isinstance(type, TypeParser.StructureUnionClassAbstractType):
