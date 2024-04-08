@@ -80,6 +80,8 @@ class DebugInfoExporter:
 
   DEFAULT_EXPORT_CLASSES = (TypeParser.ClassType, TypeParser.EnumerationType, TypeParser.StructureType,
                             TypeParser.SubroutineType, TypeParser.UnionType, TypeParser.Variable)
+  
+  NAMESPACE_SEPARATOR = "::"
 
   def _export_baseType(self,
                        baseType: TypeParser.BaseType,
@@ -100,7 +102,7 @@ class DebugInfoExporter:
                               ) -> JSONObject:
     desc = {}
     desc["datatype"] = "unspecified"
-    desc["name"] = unspecifiedType.name
+    desc["name"] = unspecifiedType.get_name()
     return desc
 
   def _export_typeDefType(self,
@@ -111,15 +113,15 @@ class DebugInfoExporter:
     desc = {}
     if unpack:
       desc["datatype"] = "typedef"
-      desc["name"] = typeDefType.name
+      desc["name"] = typeDefType.get_scoped_name(self.NAMESPACE_SEPARATOR)
       if typeDefType.type in mappings:
-        desc["mapping"] = typeDefType.type.name
+        desc["mapping"] = typeDefType.type.get_scoped_name(self.NAMESPACE_SEPARATOR)
       else:
         desc["type"] = self._export_type(typeDefType.type, unpack, mappings)
     else:
       if typeDefType in mappings:
         desc["datatype"] = "typedef"
-        desc["mapping"] = typeDefType.get_name()
+        desc["mapping"] = typeDefType.get_scoped_name(self.NAMESPACE_SEPARATOR)
       else:
         desc.update(self._export_type(typeDefType.type, False, mappings))
     return desc
@@ -162,7 +164,7 @@ class DebugInfoExporter:
                         ) -> JSONObject:
     desc: JSONObject = {}
     desc["datatype"] = "struct"
-    structure_name = structure.get_name()
+    structure_name = structure.get_scoped_name(self.NAMESPACE_SEPARATOR)
     structure_size = structure.byte_size()
     if structure_size is not None:
       desc["datawidth"] = structure_size
@@ -181,7 +183,7 @@ class DebugInfoExporter:
                     ) -> JSONObject:
     desc: JSONObject = {}
     desc["datatype"] = "union"
-    union_name = union.get_name()
+    union_name = union.get_scoped_name(self.NAMESPACE_SEPARATOR)
     union_size = union.byte_size()
     if union_size is not None:
       desc["datawidth"] = union_size
@@ -200,7 +202,7 @@ class DebugInfoExporter:
                     ) -> JSONObject:
     desc: JSONObject = {}
     desc["datatype"] = "class"
-    class_name = class_.get_name()
+    class_name = class_.get_scoped_name(self.NAMESPACE_SEPARATOR)
     class_size = class_.byte_size()
     if class_size is not None:
       desc["datawidth"] = class_size
@@ -234,7 +236,7 @@ class DebugInfoExporter:
     desc["datatype"] = "enumeration"
     if (enumeration_size := enumeration.byte_size()) != None:
       desc["datawidth"] = enumeration_size
-    enumeration_name = enumeration.get_name()
+    enumeration_name = enumeration.get_scoped_name(self.NAMESPACE_SEPARATOR)
     if unpack or not enumeration in mappings:
       if enumeration_name is not None:
         desc["name"] = enumeration_name
@@ -260,7 +262,7 @@ class DebugInfoExporter:
     if pointer.type is not None:
       pointed_type = self._trace_next_mapped_type(pointer.type, mappings)
       if pointed_type is not None:
-        pointed_type_name = pointed_type.get_name()
+        pointed_type_name = pointed_type.get_scoped_name(self.NAMESPACE_SEPARATOR)
         if pointed_type_name is not None:
           desc["mapping"] = pointed_type_name
       else:
@@ -277,7 +279,7 @@ class DebugInfoExporter:
     if reference.type is not None:
       referenced_type = self._trace_next_mapped_type(reference.type, mappings)
       if referenced_type is not None:
-        referenced_type_name = referenced_type.get_name()
+        referenced_type_name = referenced_type.get_scoped_name(self.NAMESPACE_SEPARATOR)
         if referenced_type_name is not None:
           desc["mapping"] = referenced_type_name
       else:
@@ -313,7 +315,7 @@ class DebugInfoExporter:
                          ) -> JSONObject:
     desc: JSONObject = {}
     desc["datatype"] = "subroutine"
-    subroutine_name = subroutine.get_name()
+    subroutine_name = subroutine.get_scoped_name(self.NAMESPACE_SEPARATOR)
     if subroutine_name is not None:
       desc["name"] = subroutine_name
     if subroutine.type is not None:
@@ -330,7 +332,7 @@ class DebugInfoExporter:
     desc: JSONObject = {}
     desc["datatype"] = "variable"
     variable_type = variable.get_type()
-    variable_name = variable.get_name()
+    variable_name = variable.get_scoped_name(self.NAMESPACE_SEPARATOR)
     variable_location = variable.get_location()
     if variable_name is not None:
       desc["name"] = variable_name
@@ -443,7 +445,7 @@ class DebugInfoExporter:
         while isinstance(unpack_candidate, TypeParser.TypeDefType):
           unpack_candidate = unpack_candidate.type
         if isinstance(unpack_candidate, TypeParser.StructureUnionClassAbstractType) and \
-           unpack_candidate.get_name() is not None:
+           unpack_candidate.get_scoped_name(self.NAMESPACE_SEPARATOR) is not None:
           type_to_export = unpack_candidate
 
       # Add the type to be exported
@@ -542,8 +544,8 @@ class DebugInfoExporter:
           cls_name = type.__class__.__name__
           if type.name is not None:
             failure_description = f"type {type.name} of class {cls_name}"
-          elif type.get_name() is not None:
-            failure_description = f"unnamed type (known as {type.get_name()}) of class {cls_name}"
+          elif type.get_scoped_name(self.NAMESPACE_SEPARATOR) is not None:
+            failure_description = f"unnamed type (known as {type.get_scoped_name(self.NAMESPACE_SEPARATOR)}) of class {cls_name}"
           elif type.decl.file_name is not None:
             failure_description = f"unnamed type of class {cls_name} declared in {type.decl.file_name}:{type.decl.column}"
           else:

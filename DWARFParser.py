@@ -242,7 +242,7 @@ class TypeParser:
       return 0
 
   class AbstractTAG(ABC, Named):
-    TYPED_ATTR_NAMES = ["_typedefs", "_referrers"]
+    TYPED_ATTR_NAMES = ["_typedefs", "_referrers", "namespace"]
     @property
     @abstractmethod
     def DW_TAG(cls) -> str:
@@ -264,6 +264,8 @@ class TypeParser:
       self._referrers: list[TypeParser.Typed] = []
       # Typedefs that reference this type. Only Typedef Types that were parsed are referenced
       self._typedefs: list[TypeParser.TypeDefType] = []
+      # Namespace
+      self.namespace: TypeParser.Namespace|None = None
       # Lazy dependency construction
       self._dependencies: list[TypeParser.AbstractTAG]|None = None
       self.parsed = False
@@ -315,6 +317,9 @@ class TypeParser:
       for idx in remove_idxs:
         self._referrers.pop(idx)
 
+    def set_namespace(self, namespace: TypeParser.Namespace) -> None:
+      self.namespace = namespace
+
     def byte_size(self) -> int|None:
       if isinstance(self, TypeParser.Sized):
         if (sized_byte_size := TypeParser.Sized.byte_size(self)) is not None:
@@ -331,6 +336,12 @@ class TypeParser:
         if len(typedef_names) == 1:
           name = typedef_names[0]
       return name
+    
+    def get_scoped_name(self, separator: str) -> str|None:
+      if self.namespace is None:
+        return self.get_name()
+      else:
+        return self.namespace.get_scoped_name(separator) + separator + self.get_name()
 
     def get_type_dependencies(self) -> list[TypeParser.AbstractTAG]:
       # Compute dependencies if not computed yet
@@ -1454,6 +1465,8 @@ class TypeParser:
         self.location = location_bytes
       # Inline for C++17 support
       self.inline = parser.get_die_attribute_int(die, 'DW_AT_inline')
+      # GNU:
+      self.GNU_locviews = parser.get_die_attribute_int(die, 'DW_AT_GNU_locviews')
 
       if self.specification is not None:
         self.specification.link_location(self)
@@ -1537,6 +1550,77 @@ class TypeParser:
       type = self.type.__str__(visited) if self.type is not None else 'void'
       return f"{type} {self.get_name()}"
 
+  class Namespace(AbstractTAG):
+    DW_TAG = 'DW_TAG_namespace'
+    IGNORED_ATTRIBUTES = []
+    TYPED_ATTR_NAMES = ["namespace_members"]
+    def __init__(self) -> None:
+      super().__init__()
+      self.namespace_members: list[TypeParser.AbstractTAG] = []
+
+    def parse(self, die: DIE, parser: TypeParser):
+      super().parse(die, parser)
+      self.export_symbols = parser.get_die_attribute_flag(die, 'DW_AT_export_symbols')
+    
+      # if symbols are exported, all members need to be parsed. Otherwise, only parse on request
+      if self.export_symbols:
+        self.parse_members(parser)
+     
+    def parse_members(self, parser: TypeParser):
+      # Parse all members
+      self.namespace_members = [parser.parse_DIE(ch)
+                                for ch in self.die.iter_children()
+                                if parser.is_DIE_parsable(ch)]
+      
+      # Set self as namespace in all members
+      for m in self.namespace_members:
+        m.set_namespace(self)
+
+    def parse_members_named(self, parser: TypeParser, names: list[str], namespace_separator: str):
+      namespace_bases = [t.split(namespace_separator)[0] for t in names]
+      self.namespace_members = [parser.parse_DIE(ch)
+                                for ch in self.die.iter_children()
+                                if parser.is_DIE_parsable(ch) and 
+                                   parser.get_die_attribute_str(ch, 'DW_AT_name') in namespace_bases]
+      
+      for m in self.namespace_members:
+        m.set_namespace(self)
+        # Recursively parse all named namespaces
+        if isinstance(m, TypeParser.Namespace) and not m.export_symbols:
+          namespace_type_names = [t.split(namespace_separator, 1)[1] 
+                                  for t in names 
+                                  if t.split(namespace_separator, 1)[0] == m.name]
+          m.parse_members_named(parser, namespace_type_names, namespace_separator)
+
+    def byte_size(self) -> int:
+      return 0      
+
+    def __eq__(self, __value: TypeParser.Namespace) -> bool:
+      if not isinstance(__value, TypeParser.Namespace):
+        return NotImplemented
+      return all([c.__eq__(self, __value) for c in TypeParser.Namespace.__bases__]) and \
+             self.export_symbols == __value.export_symbols
+
+    def __hash__(self) -> int:
+      return hash((tuple([c.__hash__(self) for c in TypeParser.Namespace.__bases__]), \
+                   self.export_symbols))
+
+    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+      if self in visited:
+        return f"Namespace({self.name})"
+      else:
+        visited.append(self)
+        namespace_member_repr = ", ".join([m.__repr__(visited) for m in self.namespace_members])
+        return f"Namespace({self.name}, {self.export_symbols}, [{namespace_member_repr}], )"
+
+    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+      if self in visited:
+        return f"Namespace {self.name if self.name else ''}"
+      else:
+        visited.append(self)
+        namespace_member_str = "\n".join(['\t' + m.__str__(visited) for m in self.namespace_members])
+        return f"Namespace {self.name if self.name else ''}:\n{namespace_member_str}\n"
+
   def __init__(self,
                elf_file: str|BytesIO,
                allow_duplicates: bool = False,
@@ -1549,6 +1633,7 @@ class TypeParser:
     self.catch_exceptions = catch_exceptions
 
     # Helper lists and dicts for parsing TAGs
+    self._unparsable_TAGs: list[str] = []
     self._unparsed_TAGs: list[TypeParser.AbstractTAG] = []
     self._unsorted_TAGs: list[TypeParser.AbstractTAG] = []
     self._parsed_die_attributes: dict[int, list[str]] = {}
@@ -1560,6 +1645,9 @@ class TypeParser:
 
     # Variables for tracking not completely linked TAGs
     self.unlinked: list[TypeParser.Variable] = []
+
+    # Initialize other default values
+    self._namespace_string_separator: str = "::"
 
     # Open and extract ELF file
     if isinstance(elf_file, str):
@@ -1584,10 +1672,7 @@ class TypeParser:
 
     # Extract Types and global variables
     print(f"[TypeParser] Info: Extracting TAGS from {elf_file}.")
-    if type_names is None:
-      self._extract_all()
-    else:
-      self._extract_named(type_names)
+    self._extract(type_names)
 
     if isinstance(elf_file, str):
       elf_file_bytes.close()
@@ -1763,8 +1848,24 @@ class TypeParser:
         tag_list.extend(hash_tag_list)
     return tag_list
 
-  def get_type_by_name(self, type_name: "str") -> list[AbstractType]:
-    return [type for type in self.get_types() if isinstance(type, TypeParser.Named) and type.name == type_name]
+  def get_type_by_name(self, type_name: str) -> list[AbstractType]:
+    name_elements = type_name.split(self._namespace_string_separator)
+    if len(name_elements) > 1:
+      namespace_name = name_elements.pop(0)
+      namespaces: list[TypeParser.Namespace] = [n for n in self.get_types_by_class(TypeParser.Namespace) 
+                                                if n.name == namespace_name]
+      while len(name_elements) > 1:
+        namespace_name = name_elements.pop(0)
+        namespaces = [m for n in namespaces 
+                        for m in n.namespace_members 
+                        if isinstance(m, TypeParser.Namespace) and m.name == namespace_name]
+
+      tag_list = [m for n in namespaces 
+                  for m in n.namespace_members]
+    else:
+      tag_list = self.get_types()
+    
+    return [type for type in tag_list if isinstance(type, TypeParser.Named) and type.name == name_elements[0]]
 
   def get_types_by_class(self, type_class: type[AbstractTAG]) -> list[AbstractType]:
     tag_list = []
@@ -1788,55 +1889,71 @@ class TypeParser:
       for hash_tag_list in self._TAG_class_hash_dict[TypeParser.Variable].values():
         tag_list.extend(hash_tag_list)
     return tag_list
+  
+  def set_namespace_string_separator(self, separator: str) -> None:
+    self._namespace_string_separator = separator
 
-  def _extract_all(self) -> None:
-    print(f"[TypeParser] Info: Beginning TAG extraction.")
-    unparsable_TAGs: list[str] = []
+  def get_namespace_string_separator(self) -> str:
+    return self._namespace_string_separator
+  
+  def _extract(self, type_names: list[str]|None = None) -> None:
+    if type_names is None:
+      print(f"[TypeParser] Info: Beginning TAG extraction.")
+    else:
+      print(f"[TypeParser] Info: Beginning TAG extraction of: {type_names}")
+
     for cu in self.dwarfinfo.iter_CUs():
-      cu: CompileUnit
-      if cu.get_top_DIE() is not None:
-        die: DIE
-        for die in cu.get_top_DIE().iter_children():
-          if self.is_DIE_parsable(die):
-            if self.catch_exceptions:
-              try:
-                self.parse_DIE(die)
-              except Exception as e:
-                print(f"[TypeParser] Warning: Failed to parse DIE: {die} {e}")
-            else:
-              self.parse_DIE(die)
-          else:
-            die_tag: str = str(die.tag)
-            if die_tag not in unparsable_TAGs:
-              unparsable_TAGs.append(die_tag)
-              print(f"[TypeParser] Warning: Encountered unparsable TAG: {die.tag}.")
+      if not isinstance(cu, CompileUnit):
+        raise Exception(f"Not a compile Unit: {cu}")
+      top_die = cu.get_top_DIE() 
+      if top_die is not None:
+        if not isinstance(top_die, DIE):
+          raise Exception(f"Not a DIE: {top_die}")
+        for die in top_die.iter_children():
+          if not isinstance(die, DIE):
+            raise Exception(f"Not a DIE: {top_die}")
+          self._extract_die_named(die, type_names)
+          
     self._post_parse()
 
-  def _extract_named(self, type_names: list[str]) -> None:
-    print(f"[TypeParser] Info: Beginning TAG extraction of: {type_names}")
-    unparsable_TAGs: list[str] = []
-    for cu in self.dwarfinfo.iter_CUs():
-      cu: CompileUnit
-      if cu.get_top_DIE() is not None:
-        die: DIE
-        for die in cu.get_top_DIE().iter_children():
-          if self.is_DIE_parsable(die):
-            name = self.get_die_attribute_str(die, 'DW_AT_name')
-            if name is None or not name in type_names:
-              continue
-            if self.catch_exceptions:
-              try:
-                self.parse_DIE(die)
-              except Exception as e:
-                print(f"[TypeParser] Warning: Failed to parse DIE: {die} {e}")
-            else:
-              self.parse_DIE(die)
-          else:
-            die_tag: str = str(die.tag)
-            if die_tag not in unparsable_TAGs:
-              unparsable_TAGs.append(die_tag)
-              print(f"[TypeParser] Warning: Encountered unparsable TAG: {die.tag}.")
-    self._post_parse()
+  def _extract_die_named(self, die: DIE, type_names: list[str]|None) -> AbstractTAG|None:
+    if type_names is None:
+      return self._extract_die(die)
+    
+    if self._namespace_string_separator:
+      type_name_bases = [t.split(self._namespace_string_separator)[0] for t in type_names]  
+    
+    name = self.get_die_attribute_str(die, 'DW_AT_name')
+    if name is not None and name in type_name_bases:
+      die = self._extract_die(die)
+      if isinstance(die, TypeParser.Namespace) and not die.export_symbols:
+        namespace_type_names = [t.split(self._namespace_string_separator, 1)[1] 
+                                for t in type_names 
+                                if t.split(self._namespace_string_separator, 1)[0] == die.name]
+        die.parse_members_named(self, namespace_type_names, self._namespace_string_separator)
+      return die
+
+  def _extract_die(self, die: DIE) -> AbstractTAG|None:
+    if self.is_DIE_parsable(die):
+      tag: TypeParser.AbstractTAG
+      if self.catch_exceptions:
+        try:
+          tag = self.parse_DIE(die)
+        except Exception as e:
+          print(f"[TypeParser] Warning: Failed to parse DIE: {die} {e}")
+          return
+      else:
+        tag = self.parse_DIE(die)
+      return tag
+    else:
+      self._report_unparsable_tag(die)
+      return None
+
+  def _report_unparsable_tag(self, die: DIE):
+    die_tag = str(die.tag)
+    if die_tag not in self._unparsable_TAGs:
+      self._unparsable_TAGs.append(die_tag)
+      print(f"[TypeParser] Warning: Encountered unparsable TAG: {die.tag}.")
 
   def _post_parse(self) -> None:
     # Count the number of types extracted
