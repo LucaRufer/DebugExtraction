@@ -93,4 +93,8 @@ ENV/
 env.bak/
 venv.bak/
 
+# Temporary folders and files
+temp/
+*.temp
+
 .DS_Store
