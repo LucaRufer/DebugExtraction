@@ -819,7 +819,8 @@ class TypeParser:
       TypeParser.Aligned.parse(self, die, parser)
       TypeParser.Declarable.parse(self, die, parser)
       TypeParser.Sized.parse(self, die, parser)
-      TypeParser.Typed.parse(self, die, parser, mandatory=(self.size is None and self.bit_size is None))
+      type_required = (self.size is None and self.bit_size is None) and not self.declaration
+      TypeParser.Typed.parse(self, die, parser, mandatory=type_required)
       self.enum_class = parser.get_die_attribute_flag(die, 'DW_AT_enum_class', default_value=False)
       self.byte_stride = parser.get_die_attribute_int(die, 'DW_AT_byte_stride')
       self.bit_stride = parser.get_die_attribute_int(die, 'DW_AT_bit_stride')
