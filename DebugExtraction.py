@@ -435,9 +435,20 @@ class DebugInfoExporter:
       if len(name_matches) == 0:
         raise Exception(f"Type {type_name} not found.")
       if len(name_matches) > 1:
-        print(f"""DebugExtraction] Warning: Found {len(name_matches)} types named '{type_name}'.
-                  Exporting only the first match.""")
-      type_to_export = name_matches[0]
+        # Multiple matches. Check for non-declarations
+        non_declaration_matches = [m for m in name_matches if isinstance(m, TypeParser.Declarable) and not m.declaration]
+        if len(non_declaration_matches) == 0:
+          print(f"""[DebugExtraction] Warning: Found declarations of {len(name_matches)} types named '{type_name}'.
+                    Exporting only the first match.""")
+          type_to_export = name_matches[0]
+        elif len(non_declaration_matches) == 1:
+          type_to_export = non_declaration_matches[0]
+        else:
+          print(f"""[DebugExtraction] Warning: Found {len(name_matches)} definitions of types named '{type_name}'.
+                    Exporting only the first match.""")
+          type_to_export = non_declaration_matches[0]
+      else:
+        type_to_export = name_matches[0]
 
       # Unpack typedefs if the corresponding option is set
       if unpack_StructureUnionClass_typedefs and isinstance(type_to_export, TypeParser.TypeDefType):
@@ -456,7 +467,6 @@ class DebugInfoExporter:
                     types: list[TypeParser.AbstractTAG],
                     export_dependencies = True,
                     export_classes: tuple[type[TypeParser.AbstractTAG],...]|None = None,
-                    export_completed_declarations = True,
                     export_unnamed = False,
                     ) -> list[dict]:
     if export_classes is None:
@@ -487,27 +497,6 @@ class DebugInfoExporter:
     else:
       types_to_export = types
 
-    # If export_completed_declarations, replace declarations with their completed version
-    if export_completed_declarations:
-      replacements: deque[tuple[int, TypeParser.AbstractTAG|None]] = deque()
-      n_removed, n_replaced, n_duplicate = (0, 0, 0)
-      for idx, type in enumerate(types_to_export):
-        if isinstance(type, TypeParser.Declarable) and type.declaration:
-          replacements.appendleft((idx, type.completed_TAG))
-      for idx, replacement in replacements:
-        if replacement is None:
-          if replacement in types_to_export: n_duplicate += 1
-          else: n_removed += 1
-          types_to_export.pop(idx)
-        else:
-          types_to_export[idx] = replacement
-          n_replaced += 1
-      if n_replaced > 0:
-        print(f"[DebugExtraction] Info: replaced {n_replaced} declarations with their completion.")
-      if n_removed > 0:
-        print(f"[DebugExtraction] Info: removed {n_removed} non-defining declarations without a replacement.")
-      if n_duplicate > 0:
-        print(f"[DebugExtraction] Info: removed {n_duplicate} declarations where the completion is already exported.")
 
     # Check if unnamed descriptions are to be exported
     if not export_unnamed:
