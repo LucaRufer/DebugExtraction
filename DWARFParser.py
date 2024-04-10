@@ -88,10 +88,12 @@ class TypeParser:
       # File name is excluded for faster computation
       return hash((self.line, self.column))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       return f"Declaration({self.file}, {self.line}, {self.column})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       return f"File \"{self.file_name}\", Line: {self.line}, Column: {self.column}"
 
   class Accessible:
@@ -249,11 +251,11 @@ class TypeParser:
       pass
 
     @abstractmethod
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       pass
 
     @abstractmethod
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       pass
 
     def __init__(self) -> None:
@@ -414,10 +416,10 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.BaseType.__bases__]),
                    self.encoding, self.endianity, self.bit_offset))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       return f"BaseType({self.name})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       return str(self.name)
 
   class UnspecifiedType(AbstractType):
@@ -439,10 +441,10 @@ class TypeParser:
     def __hash__(self) -> int:
       return hash((tuple([c.__hash__(self) for c in TypeParser.UnspecifiedType.__bases__])))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       return f"UnspecifiedType({self.name})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       return str(self.name)
 
   class TypeDefType(AbstractType, Accessible, Aligned, Declarable, Typed, Named):
@@ -485,14 +487,16 @@ class TypeParser:
     def __hash__(self) -> int:
       return hash((tuple([c.__hash__(self) for c in TypeParser.TypeDefType.__bases__])))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"TypeDefType({self.name})"
       else:
         visited.append(self)
         return f"TypeDefType({self.name}, {self.type.__repr__(visited)})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"{self.name} -> {self.type.get_name()}"
       else:
@@ -601,7 +605,8 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.StructureUnionClassAbstractType.__bases__]),
                    self.export_symbols, self.calling_convention))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"{self.__class__.__name__}({self.get_name(default='')})"
       else:
@@ -609,7 +614,8 @@ class TypeParser:
         member_list_repr = ", ".join([m.__repr__(visited) for m in self.members])
         return f"{self.__class__.__name__}({self.get_name(default='')}, [{member_list_repr}])"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"{self.BRIEF_STR} {self.get_name(default='')}"
       else:
@@ -720,14 +726,16 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.Member.__bases__]),
                    self.accessibility, self.mutable, self.data_bit_offset, data_member_location_hash))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"Member({self.type.get_name()}, {self.name})"
       else:
         visited.append(self)
         return f"Member({self.type.__repr__(visited)}, {self.name})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"{self.type.get_name()} {self.name}"
       else:
@@ -794,10 +802,12 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.Enumerator.__bases__]), \
                    self.value))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       return f"Enumerator({self.name}, {self.value})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       return f"{self.name} = {self.value}"
 
   class EnumerationType(AbstractType, Accessible, Aligned, Declarable, Sized, Typed):
@@ -848,7 +858,8 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.EnumerationType.__bases__]), \
                    self.enum_class, self.byte_stride, self.bit_size))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"EnumerationType({self.name})"
       else:
@@ -856,7 +867,8 @@ class TypeParser:
         enumerators_repr = ", ".join([e.__repr__(visited) for e in self.enumerators])
         return f"EnumerationType({self.name}, {self.type.__repr__(visited)}, [{enumerators_repr}])"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       name_str = (self.get_name() + ' ' if self.get_name() is not None else '')
       if self in visited:
         return f"Enumeration {name_str}"
@@ -899,13 +911,15 @@ class TypeParser:
     def __hash__(self) -> int:
       return hash((tuple([c.__hash__(self) for c in TypeParser.AbstractModifierType.__bases__])))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # Abstract modifiers will always be extended
       class_name = self.__class__.__name__
       type_repr = self.type.__repr__(visited) if self.type is not None else 'None'
       return class_name + '(' + type_repr + ')'
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # Abstract modifiers will always be extended
       type_str = self.type.__str__(visited) if self.type is not None else 'void'
       left_str = self.MODIFIER_STR_LEFT + ' ' if self.MODIFIER_STR_LEFT is not None else ''
@@ -1209,11 +1223,12 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.Subrange.__bases__]), \
                    lower_bound_hash, upper_bound_hash, self.count, self.byte_stride, self.bit_stride))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # Subrange will always be extended
       return f"Subrange({self.type.__repr__(visited)}, {self.lower_bound}, {self.upper_bound})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       # Subrange will always be extended
       return f"[{self.count}]"
 
@@ -1298,12 +1313,14 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.ArrayType.__bases__]), \
                    self.ordering, self.byte_stride, self.bit_stride, self.accessibility, self.visibility))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # ArrayType will always be expanded
       dimensions_repr = ", ".join([dim.__repr__(visited) for dim in self.dimensions])
       return f"ArrayType({self.type.__repr__(visited)}, {dimensions_repr})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # ArrayType will always be expanded
       dimensions_str = "".join([dim.__str__(visited) for dim in self.dimensions])
       return f"{self.type.__str__(visited) if self.type is not None else ''} {dimensions_str}"
@@ -1343,13 +1360,15 @@ class TypeParser:
                    self.artificial, self.const_value, self.default_value, self.endianity, self.is_optional,
                    self.variable_parameter))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # Formal Parameter will always be expanded
       type_repr = self.type.__repr__(visited) if self.type is not None else 'None'
       name_repr = self.name if self.name is not None else 'None'
       return f"FormalParameter({type_repr}, {name_repr})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       # Formal Parameter will always be expanded
       type_str = self.type.__str__(visited)
       if self.name is not None:
@@ -1407,7 +1426,8 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.SubroutineType.__bases__]), \
                    self.prototyped, self.unspecified_parameters))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"SubroutineType({self.name})"
       else:
@@ -1416,7 +1436,8 @@ class TypeParser:
         parameters_repr = ", ".join([p.__repr__(visited) for p in self.parameters])
         return f"SubroutineType({self.name}, {return_type}, [{parameters_repr}], {self.unspecified_parameters})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"{self.name if self.name else ''}()"
       else:
@@ -1543,11 +1564,13 @@ class TypeParser:
                    self.linkage_name, self.visibility, self.location,
                    self.const_value if not isinstance(self.const_value, list) else tuple(self.const_value)))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       type = self.type.__repr__(visited) if self.type is not None else 'void'
       return f"Variable({self.name}, {type})"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       type = self.type.__str__(visited) if self.type is not None else 'void'
       return f"{type} {self.get_name()}"
 
@@ -1606,7 +1629,8 @@ class TypeParser:
       return hash((tuple([c.__hash__(self) for c in TypeParser.Namespace.__bases__]), \
                    self.export_symbols))
 
-    def __repr__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"Namespace({self.name})"
       else:
@@ -1614,7 +1638,8 @@ class TypeParser:
         namespace_member_repr = ", ".join([m.__repr__(visited) for m in self.namespace_members])
         return f"Namespace({self.name}, {self.export_symbols}, [{namespace_member_repr}], )"
 
-    def __str__(self, visited: list[TypeParser.AbstractTAG] = []) -> str:
+    def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
+      visited = visited or []
       if self in visited:
         return f"Namespace {self.name if self.name else ''}"
       else:
