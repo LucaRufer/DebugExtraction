@@ -420,7 +420,7 @@ class DebugInfoExporter:
   def export_specific_classes(self, export_classes: list[type[TypeParser.AbstractTAG]], **kwargs) -> list[dict]:
     types_to_export: list[TypeParser.AbstractTAG] = []
     for cls in export_classes:
-      types_to_export.extend(self.typeParser.get_types_by_class(cls))
+      types_to_export.extend(self.typeParser.get_tags_by_class(cls))
     return self._export_types(list(types_to_export), **kwargs)
 
   def export_named_types(self,
@@ -431,7 +431,7 @@ class DebugInfoExporter:
     # Convert names to types
     types_to_export: list[TypeParser.AbstractTAG] = []
     for type_name in export_type_names:
-      name_matches = self.typeParser.get_type_by_name(type_name)
+      name_matches = self.typeParser.get_tags_by_name(type_name)
       if len(name_matches) == 0:
         raise Exception(f"Type {type_name} not found.")
       if len(name_matches) > 1:
@@ -468,7 +468,7 @@ class DebugInfoExporter:
       dependencies: list[TypeParser.AbstractTAG] = []
       dependencies_set: set[TypeParser.AbstractTAG] = set(types)
       for type in types:
-        type_dependencies = type.get_type_dependencies()
+        type_dependencies = type.get_tag_dependencies()
         for dep in type_dependencies:
           if not dep in dependencies_set:
             dependencies_set.add(dep)

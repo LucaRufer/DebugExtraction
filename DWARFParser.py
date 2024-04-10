@@ -345,18 +345,18 @@ class TypeParser:
       else:
         return self.namespace.get_scoped_name(separator) + separator + self.get_name()
 
-    def get_type_dependencies(self) -> list[TypeParser.AbstractTAG]:
+    def get_tag_dependencies(self) -> list[TypeParser.AbstractTAG]:
       # Compute dependencies if not computed yet
       if self._dependencies is None:
         self._dependencies = []
-        self._get_type_dependencies(self._dependencies)
+        self._get_tag_dependencies(self._dependencies)
       return self._dependencies
 
-    def _get_type_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
+    def _get_tag_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
       if not self in dependencies:
         dependencies.append(self)
         if isinstance(self, TypeParser.Typed) and self.type is not None:
-          self.type._get_type_dependencies(dependencies)
+          self.type._get_tag_dependencies(dependencies)
 
     def __eq__(self, __value: TypeParser.AbstractTAG) -> bool:
       if not isinstance(__value, TypeParser.AbstractTAG):
@@ -558,14 +558,11 @@ class TypeParser:
       else:
         return None
 
-    def _get_type_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
+    def _get_tag_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
       if not self in dependencies:
-        if self.declaration and self.completed_TAG is not None:
-          self.completed_TAG = self.completed_TAG._get_type_dependencies(dependencies)
-        else:
-          dependencies.append(self)
-          for m in self.members:
-            m.type._get_type_dependencies(dependencies)
+        dependencies.append(self)
+        for m in self.members:
+          m.type._get_tag_dependencies(dependencies)
 
     def get_name(self, default:str|None = None) -> str|None:
       name = self.name
@@ -1404,14 +1401,14 @@ class TypeParser:
       # this is done hy having a PointerType to a SubroutineType, which specifies the byte size of the reference.
       return 0
 
-    def _get_type_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
+    def _get_tag_dependencies(self, dependencies: list[TypeParser.AbstractTAG]) -> None:
       if not self in dependencies:
         dependencies.append(self)
         if self.type is not None:
-          self.type._get_type_dependencies(dependencies)
+          self.type._get_tag_dependencies(dependencies)
         for param in self.parameters:
           if param.type is not None:
-            param.type._get_type_dependencies(dependencies)
+            param.type._get_tag_dependencies(dependencies)
 
     def __eq__(self, __value: TypeParser.SubroutineType) -> bool:
       if not isinstance(__value, TypeParser.SubroutineType):
@@ -1867,18 +1864,18 @@ class TypeParser:
     value = self.get_die_attribute(die, attribute_name, expected_form, mandatory=mandatory)
     return value.decode() if value is not None else default_value
 
-  def get_tags(self) -> list[AbstractType]:
+  def get_tags(self) -> list[AbstractTAG]:
     tag_list = []
     for hash_tag_dict in self._TAG_class_hash_dict.values():
       for hash_tag_list in hash_tag_dict.values():
         tag_list.extend(hash_tag_list)
     return tag_list
 
-  def get_type_by_name(self, type_name: str) -> list[AbstractType]:
+  def get_tags_by_name(self, type_name: str) -> list[AbstractTAG]:
     name_elements = type_name.split(self._namespace_string_separator)
     if len(name_elements) > 1:
       namespace_name = name_elements.pop(0)
-      namespaces: list[TypeParser.Namespace] = [n for n in self.get_types_by_class(TypeParser.Namespace) 
+      namespaces: list[TypeParser.Namespace] = [n for n in self.get_tags_by_class(TypeParser.Namespace) 
                                                 if n.name == namespace_name]
       while len(name_elements) > 1:
         namespace_name = name_elements.pop(0)
@@ -1889,11 +1886,11 @@ class TypeParser:
       tag_list = [m for n in namespaces 
                   for m in n.namespace_members]
     else:
-      tag_list = self.get_types()
+      tag_list = self.get_tags()
     
     return [type for type in tag_list if isinstance(type, TypeParser.Named) and type.name == name_elements[0]]
 
-  def get_types_by_class(self, type_class: type[AbstractTAG]) -> list[AbstractType]:
+  def get_tags_by_class(self, type_class: type[AbstractTAG]) -> list[AbstractType]:
     tag_list = []
     for cls, class_hash_tag_lists in self._TAG_class_hash_dict.items():
       if issubclass(cls, type_class):
@@ -2064,8 +2061,7 @@ class TypeParser:
     uncompleted: list[TypeParser.Declarable] = []
     completed: list[TypeParser.Declarable] = []
     # Filter all Types that are a declaration
-    types = self.get_types()
-    declaration_types = [t for t in types if isinstance(t, TypeParser.Declarable) and t.declaration]
+    declaration_types = [t for t in self.get_tags() if isinstance(t, TypeParser.Declarable) and t.declaration]
     for declaration_type in declaration_types:
       # Cannot complete unnamed types, as name is used to find the completing type
       if declaration_type.name is None:
