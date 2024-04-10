@@ -160,25 +160,33 @@ class TypeParser:
       return hash(self.artificial)
 
   class Declarable:
-    TYPED_ATTR_NAMES = ["completed_TAG"]
+    TYPED_ATTR_NAMES = []
     def __init__(self) -> None:
       pass
 
     def parse(self, die: DIE, parser: TypeParser, mandatory: bool = False):
       self.declaration = parser.get_die_attribute_flag(die, 'DW_AT_declaration', default_value=False, mandatory=mandatory)
-      self.completed_TAG = None
 
-    def set_completed_TAG(self, completed_TAG: TypeParser.AbstractTAG):
-      self.completed_TAG = completed_TAG
+    def update_from(self, update: TypeParser.Declarable):
+      assert(self.__class__ == update.__class__)
+      update_attributes = [attr 
+                           for attr in update.__dir__() 
+                           if not attr.startswith("__") and 
+                           self.__getattribute__(attr) is None and
+                           update.__getattribute__(attr) is not None]
+      for attr in update_attributes:
+        self.__setattr__(attr, update.__getattribute__(attr))
+      
+      if isinstance(self, TypeParser.Typed) and "type" in update_attributes:
+        self.type.add_referrer(self)
 
     def __eq__(self, __value: TypeParser.Declarable) -> bool:
       if not isinstance(__value, TypeParser.Declarable):
         return NotImplemented
-      return self.declaration == __value.declaration and \
-             self.completed_TAG == __value.completed_TAG
+      return self.declaration == __value.declaration
 
     def __hash__(self) -> int:
-      return hash((self.declaration, self.completed_TAG))
+      return hash((self.declaration))
 
   class Named:
     TYPED_ATTR_NAMES = []
@@ -549,8 +557,6 @@ class TypeParser:
         self.containing_structure.add_exported_symbols(self.members)
 
     def byte_size(self) -> int|None:
-      if self.declaration and self.completed_TAG is not None:
-        return self.completed_TAG.byte_size()
       if TypeParser.Sized.byte_size(self) is not None:
         return TypeParser.Sized.byte_size(self)
       elif self.specification is not None:
@@ -566,8 +572,6 @@ class TypeParser:
 
     def get_name(self, default:str|None = None) -> str|None:
       name = self.name
-      if name is None and self.declaration and self.completed_TAG is not None:
-        name = self.completed_TAG.get_name()
       if name is None and self.specification is not None:
         name = self.specification.get_name()
       if name is None:
@@ -1280,10 +1284,7 @@ class TypeParser:
       return self.type.byte_size() * total_elements
 
     def get_dimensions(self):
-      if self.declaration and self.completed_TAG is not None:
-        return self.completed_TAG.get_dimensions()
-      else:
-        return self.dimensions
+      return self.dimensions
 
     def _compare_dimensions(self, __value: TypeParser.ArrayType) -> bool:
       if len(self.dimensions) != len(__value.dimensions):
@@ -1448,7 +1449,7 @@ class TypeParser:
   class Variable(AbstractTAG, Accessible, Aligned, Artificial, Declarable, Typed):
     DW_TAG = 'DW_TAG_variable'
     IGNORED_ATTRIBUTES = ['DW_AT_segment', 'DW_AT_start_scope']
-    TYPED_ATTR_NAMES = ["specification", "linked_location"]
+    TYPED_ATTR_NAMES = ["specification"]
 
     def __init__(self) -> None:
       super().__init__()
@@ -1475,11 +1476,11 @@ class TypeParser:
         # Support gcc/g++ extension
         self.linkage_name = parser.get_die_attribute_str(die, 'DW_AT_MIPS_linkage_name')
       self.visibility = parser.get_die_attribute_int(die, 'DW_AT_visibility')
-      self.specification: TypeParser.Variable|None
       self.specification = parser.get_die_attribute_ref(die, 'DW_AT_specification')
+      assert(self.specification is None or isinstance(self.specification, self.__class__))
       location_bytes = parser.get_die_attribute_block_or_int(die, 'DW_AT_location')
       if (isinstance(location_bytes, list)):
-        self.location = int.from_bytes(location_bytes[1:], byteorder='little', signed=False) if location_bytes is not None else None
+        self.location = int.from_bytes(location_bytes[1:], byteorder='little', signed=False)
       else:
         self.location = location_bytes
       # Inline for C++17 support
@@ -1487,10 +1488,16 @@ class TypeParser:
       # GNU:
       self.GNU_locviews = parser.get_die_attribute_int(die, 'DW_AT_GNU_locviews')
 
-      if self.specification is not None:
-        self.specification.link_location(self)
-
-      self.linked_location = None
+      # If the variable is an external declaration, search for the specification
+      if self.declaration and self.external:
+        sibling: DIE
+        for sibling in die.iter_siblings():
+          if sibling.tag == self.DW_TAG and parser.get_die_attribute_ref_DIE(sibling, 'DW_AT_specification') == self.die:
+            # Parse the sibling
+            specification = parser.parse_DIE(sibling)
+            assert(isinstance(specification, self.__class__))
+            specification.update_from(self)
+            break
 
     def get_name(self) -> str|None:
       if self.name is not None:
@@ -1501,19 +1508,13 @@ class TypeParser:
         return super().get_name()
 
     def get_location(self) -> int|None:
-      if self.location is not None:
-        return self.location
-      if self.linked_location is not None:
-        return self.linked_location.get_location()
-      return None
+      return self.location
 
     def is_const_value(self) -> bool:
       if self.const_expr is not None:
         return self.const_expr
       if self.specification is not None and self.specification.const_expr is not None:
         return self.specification.const_expr
-      if self.linked_location is not None and self.linked_location.const_expr is not None:
-        return self.linked_location.const_expr
       return False
 
     def get_const_value(self) -> Any:
@@ -1521,8 +1522,6 @@ class TypeParser:
         return self.const_value
       if self.specification is not None and self.specification.const_value is not None:
         return self.specification.const_value
-      if self.linked_location is not None and self.linked_location.const_value is not None:
-        return self.linked_location.const_value
       return None
 
     def get_type(self) -> TypeParser.AbstractTAG|None:
@@ -1532,18 +1531,12 @@ class TypeParser:
       # Check specification
       if self.specification is not None and self.specification.type is not None:
         return self.specification.type
-      # Check if declaration
-      if self.declaration and self.completed_TAG is not None:
-        return self.completed_TAG.type # type: ignore
       return self.type
 
-    def link_location(self, var: TypeParser.Variable):
-      self.linked_location = var
-
     def __eq__(self, __value: TypeParser.Variable) -> bool:
-      if not isinstance(__value, TypeParser.Variable):
+      if not isinstance(__value, self.__class__):
         return NotImplemented
-      return all([c.__eq__(self, __value) for c in TypeParser.Variable.__bases__]) and \
+      return all([c.__eq__(self, __value) for c in self.__class__.__bases__]) and \
              self.external == __value.external and \
              self.accessibility == __value.accessibility and \
              self.artificial == __value.artificial and \
@@ -1564,12 +1557,13 @@ class TypeParser:
     def __repr__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       visited = visited or []
       type = self.type.__repr__(visited) if self.type is not None else 'void'
-      return f"Variable({self.name}, {type})"
+      return f"Variable({self.name}, {type}, {self.location})"
 
     def __str__(self, visited: list[TypeParser.AbstractTAG]|None = None) -> str:
       visited = visited or []
       type = self.type.__str__(visited) if self.type is not None else 'void'
-      return f"{type} {self.get_name()}"
+      location = hex(self.location) if self.location is not None else 'unknown location'
+      return f"{type} {self.get_name()} @ {location}"
 
   class Namespace(AbstractTAG):
     DW_TAG = 'DW_TAG_namespace'
@@ -1803,12 +1797,8 @@ class TypeParser:
                             default_value: TypeParser.AbstractTAG|None = None,
                             mandatory: bool = False,
                             ) -> TypeParser.AbstractTAG|None:
-    expected_form = ["DW_FORM_ref1", "DW_FORM_ref2", "DW_FORM_ref4", "DW_FORM_ref8", "DW_FORM_ref_udata",
-                     "DW_FORM_ref_addr", "DW_FORM_ref_sup4", "DW_FORM_ref_sig8"]
-    value = self.get_die_attribute(die, attribute_name, expected_form, mandatory=mandatory)
-    cu: CompileUnit = die.cu
-    if value is not None:
-      type_die = cu.get_DIE_from_refaddr(value + cu.cu_offset)
+    type_die = self.get_die_attribute_ref_DIE(die, attribute_name, default_value=default_value, mandatory=mandatory)
+    if type_die is not None:
       if self.catch_exceptions:
         try:
           return self.parse_DIE(type_die)
@@ -1816,6 +1806,22 @@ class TypeParser:
           raise Exception(f"Failed to parse reference of attribute {attribute_name} of DIE \n{die}\nCause: {e}")
       else:
         return self.parse_DIE(type_die)
+    else:
+      return default_value
+    
+  def get_die_attribute_ref_DIE(self,
+                                die: DIE,
+                                attribute_name: str,
+                                /, *,
+                                default_value: DIE|None = None,
+                                mandatory: bool = False,
+                                ) -> DIE|None:
+    expected_form = ["DW_FORM_ref1", "DW_FORM_ref2", "DW_FORM_ref4", "DW_FORM_ref8", "DW_FORM_ref_udata",
+                     "DW_FORM_ref_addr", "DW_FORM_ref_sup4", "DW_FORM_ref_sig8"]
+    value = self.get_die_attribute(die, attribute_name, expected_form, mandatory=mandatory)
+    cu: CompileUnit = die.cu
+    if value is not None:
+      return cu.get_DIE_from_refaddr(value + cu.cu_offset)
     else:
       return default_value
     
@@ -1983,18 +1989,10 @@ class TypeParser:
     print(f"[TypeParser] Info: {len(self.get_tags())} TAGs extracted.")
     print(f"[TypeParser] Info: Starting secondary linking phase.")
 
-    # Link external variables across Compile Units
-    self.unlinked = self._link_external()
-    if len(self.unlinked) > 0:
-      unliked_names_str = "\n".join([" - " + u.name for u in self.unlinked if u.name is not None])
-      print(f"[TypeParser] Warning: {len(self.unlinked)} global variable(s) declared as external remain unlinked:\n{unliked_names_str}")
-
     # Complete Declarations
     self.completed_declarations, self.uncompleted_declarations = self._complete_declaration()
     if len(self.completed_declarations) > 0:
-      updated = self._update_typed_with_completed_declarations()
       print(f"[TypeParser] Info: completed {len(self.completed_declarations)} type declaration(s).")
-      print(f"[TypeParser] Info: {len(updated)} Tags which reference an completed declaration were updated.")
     if len(self.uncompleted_declarations) > 0:
       uncompleted_names_str = "\n".join([" - " + u.name for u in self.uncompleted_declarations if u.name is not None])
       print(f"[TypeParser] Warning: {len(self.uncompleted_declarations)} type declaration(s) remain incomplete:\n{uncompleted_names_str}")
@@ -2019,44 +2017,6 @@ class TypeParser:
       num_tags_per_class = sum([len(tag_list) for tag_list in hash_dict.values()])
       print(f"{str(num_tags_per_class).rjust(6)} {cls.__name__}")
 
-  def _link_external(self) -> list[TypeParser.Variable]:
-    global_vars = self.get_global_variables()
-    # Vars can only be linked to named vars with a location (or linked location) or a constant value
-    linkable_var_list = [v
-                         for v in global_vars
-                         if not v.external and
-                            v.name is not None and
-                            (v.get_location() is not None or v.is_const_value())]
-    # Only unlinked named vars declared as external are linked
-    to_link_list = [v
-                    for v in global_vars
-                    if v.external and
-                       v.declaration and
-                       v.name is not None and
-                       (v.get_location() is None and not v.is_const_value())]
-    for var in to_link_list:
-      # Find all vars with a matching name
-      matches = [v for v in linkable_var_list if v.name == var.name]
-      if len(matches) == 1:
-        # Exactly one match. Link to that variable
-        var.linked_location = matches[0]
-      elif len(matches) == 0:
-        # No matches. Try to determine location via the symbol table
-        matches = self.symtab.get_symbol_by_name(var.name)
-        if matches is not None and len(matches) == 1:
-          var.location = int(matches[0].entry['st_value'])
-      # Re-sort the variable after modifying it
-      self.resort_TAG(var)
-
-    # Re-compute the unlinked list
-    unlinked = [v
-                for v in global_vars
-                if v.external and
-                    v.declaration and
-                    v.name is not None and
-                    (v.get_location() is None and not v.is_const_value())]
-    return unlinked
-
   def _complete_declaration(self) -> tuple[list[TypeParser.Declarable], list[TypeParser.Declarable]]:
     uncompleted: list[TypeParser.Declarable] = []
     completed: list[TypeParser.Declarable] = []
@@ -2075,24 +2035,16 @@ class TypeParser:
                             if not t.declaration
                               and t.name is not None
                               and t.name == declaration_type.name]
-        if len(completion_types) == 1:
-          declaration_type.set_completed_TAG(completion_types[0])
-          self.resort_TAG(declaration_type)
+        if len(completion_types) >= 1:
+          # Update all completions with the information from the declaration
+          for completion in completion_types:
+            completion.update_from(declaration_type)
+            self.resort_TAG(completion)
+          self._remove_TAG_exact(declaration_type, deinit=True, replacement=completion_types[0])
           completed.append(declaration_type)
         else:
           uncompleted.append(declaration_type)
     return completed, uncompleted
-
-  def _update_typed_with_completed_declarations(self) -> list[TypeParser.Typed]:
-    typed_tags: list[TypeParser.Typed] = self.get_types_by_class(TypeParser.Typed)
-    updates_tags: list[TypeParser.Typed] = []
-    for completed_declaration in self.completed_declarations:
-      # Find all typed TAGs that reference the completed TAG (with is, not with ==)
-      referring_typed_TAGS = [tag for tag in typed_tags if tag.type is completed_declaration]
-      for referrer in referring_typed_TAGS:
-        referrer.type = completed_declaration.completed_TAG
-      updates_tags.extend(referring_typed_TAGS)
-    return updates_tags
 
   def _get_duplicates(self) -> dict[TypeParser.AbstractTAG, list[TypeParser.AbstractTAG]]:
     # Dict containing the duplicates, the 'original' is used as a key
