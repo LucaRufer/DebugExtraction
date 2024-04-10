@@ -2169,7 +2169,7 @@ class TypeParser:
     # Remove from TAG from parser lists
     for duplicate_list in duplicates.values():
       for duplicate in duplicate_list:
-        self._remove_TAG_exact(duplicate)
+        self._remove_TAG_exact(duplicate, deinit=True, replacement=original)
 
     # Repeat
     self.duplicates = self._get_duplicates()
@@ -2258,7 +2258,10 @@ class TypeParser:
     # Remove from _TAG_class_dict
     self._TAG_class_hash_dict[tag.__class__][hash(tag)].remove(tag)
 
-  def _remove_TAG_exact(self, tag_to_remove: TypeParser.AbstractTAG):
+  def _remove_TAG_exact(self, 
+                        tag_to_remove: TypeParser.AbstractTAG, *, 
+                        deinit: bool = True,
+                        replacement: TypeParser.AbstractTAG|None = None):
     # update self._TAG_CU_offset_dict
     for tag_dict in self._TAG_CU_offset_dict.values():
       remove_offsets = []
@@ -2269,19 +2272,23 @@ class TypeParser:
         tag_dict.pop(offset)
 
     # update self._TAG_class_hash_dict
-    for tag_dict in self._TAG_class_hash_dict.values():
-      for tag_list in tag_dict.values():
-        remove_idx = []
-        for idx, tag in enumerate(tag_list):
-          if tag is tag_to_remove:
-            remove_idx.append(idx)
-        remove_idx.reverse()
-        for idx in remove_idx:
-          tag_list.pop(idx)
+    tag_dict = self._TAG_class_hash_dict[tag_to_remove.__class__]
+    for tag_list in tag_dict.values():
+      remove_idx = []
+      for idx, tag in enumerate(tag_list):
+        if tag is tag_to_remove:
+          remove_idx.append(idx)
+      remove_idx.reverse()
+      for idx in remove_idx:
+        tag_list.pop(idx)
+
+    # De-init the tag to remove
+    if deinit:
+      tag_to_remove.deinit(replacement)
 
   def resort_TAG(self, tag: TypeParser.AbstractTAG):
     # Remove the tag from the current dicts exactly
-    self._remove_TAG_exact(tag)
+    self._remove_TAG_exact(tag, deinit=False, replacement=None)
     # Add it again and sort it correctly
     self.add_TAG(tag)
 
@@ -2358,21 +2365,12 @@ class TypeParser:
       if is_duplicate:
         # Overwrite the reference in the _TAG_CU_offset_dict to the original
         self._TAG_CU_offset_dict[unsorted_TAG.die.cu][unsorted_TAG.die.offset] = sort_as_TAG
-
-      # Add to _TAG_class_hash_dict to sort them by class and hash (for quick duplicate checking)
-      # If it's a duplicate, the original is already in the dict and does not have to be added.
-      if not is_duplicate:
-        if not cls in self._TAG_class_hash_dict:
-          self._TAG_class_hash_dict[cls] = {tag_hash: [unsorted_TAG]}
-        else:
-          TAG_hash_dict = self._TAG_class_hash_dict[cls]
-          if tag_hash in TAG_hash_dict:
-            TAG_hash_dict[tag_hash].append(unsorted_TAG)
-          else:
-            TAG_hash_dict[tag_hash] = [unsorted_TAG]
-
-      if is_duplicate:
+        # De-init the unsorted tag
         unsorted_TAG.deinit(replacement = sort_as_TAG)
+      else:
+        # Add to _TAG_class_hash_dict to sort them by class and hash (for quick duplicate checking)
+        # If it's a duplicate, the original is already in the dict and does not have to be added.
+        self.add_TAG(unsorted_TAG)
 
     # Clear the unsorted TAG list after sorting
     self._unsorted_TAGs.clear()
