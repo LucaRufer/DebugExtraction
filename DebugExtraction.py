@@ -334,12 +334,15 @@ class DebugInfoExporter:
     variable_type = variable.get_type()
     variable_name = variable.get_scoped_name(self.NAMESPACE_SEPARATOR)
     variable_location = variable.get_location()
+    variable_physical_location = variable.get_physical_location()
     if variable_name is not None:
       desc["name"] = variable_name
     if variable_type is not None:
       desc["type"] = self._export_type(variable_type, False, mappings)
     if variable_location is not None:
       desc["location"] = variable_location
+    if variable_physical_location is not None:
+      desc["physical_location"] = variable_physical_location
     return desc
 
   def _export_void_type(self) -> JSONObject:

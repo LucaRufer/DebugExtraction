@@ -291,3 +291,4 @@ An subroutine entry has the following properties:
 * `"name"`_(Optional)_: A string providing the name of the variable. Only present if the variable is named.
 * `"type"`_(Optional)_: A JSON object containing a representation of the type of the variable. If the `"type"` property is not present, the type is assumed to be unknown.
 * `"location"`_(Optional)_: An integer representing the address of the variable. Only present if the location of the variable is known.
+* `"physical_location"`_(Optional)_: An integer representing the load address of the variable. Only present if the location of the variable is known.

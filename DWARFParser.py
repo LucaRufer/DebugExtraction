@@ -291,7 +291,7 @@ class TypeParser:
     def parse_complete(self):
       self.parsed = True
 
-    def deinit(self, replacement: TypeParser.AbstractTAG|None = None):
+    def deinit(self, replacement: TypeParser.AbstractTAG|None = None) -> None:
       # If a replacement is specified, make sure all TAGs that refer to this type are updated
       if replacement is not None:
         for referrer in self._referrers:
@@ -1499,6 +1499,9 @@ class TypeParser:
             specification.update_from(self)
             break
 
+      # Other
+      self.physical_location = None
+
     def get_name(self) -> str|None:
       if self.name is not None:
         return self.name
@@ -1532,6 +1535,12 @@ class TypeParser:
       if self.specification is not None and self.specification.type is not None:
         return self.specification.type
       return self.type
+
+    def set_physical_location(self, physical_location: int):
+      self.physical_location = physical_location
+
+    def get_physical_location(self) -> int|None:
+      return self.physical_location
 
     def __eq__(self, __value: TypeParser.Variable) -> bool:
       if not isinstance(__value, self.__class__):
@@ -2011,6 +2020,32 @@ class TypeParser:
     if len(self.invalid_references) > 0:
       print(f"[TypeParser] Warning: Found {len(self.invalid_references)} TAGs with an invalid reference.")
 
+    if len(self.get_tags_by_class(TypeParser.Variable)) > 0:
+      print(f"[TypeParser] Info: Checking variable locations.")
+      self.invalid_located_variables, self.missing_variables = self._validate_variable_locations()
+      num_inval_vars = len(self.invalid_located_variables)
+      if num_inval_vars > 0:
+        print(f"[TypeParser] Warning: {num_inval_vars} Variables have different location from the symbol table:")
+        for invalid_var, poss_locations in self.invalid_located_variables:
+          if len(poss_locations) == 1:
+            print(f" - '{invalid_var.name}' @ {hex(invalid_var.location)}: Expected {poss_locations[0]}")
+          else:
+            print(f" - '{invalid_var.name}' @ {hex(invalid_var.location)}: Expected any of {poss_locations}")
+      num_missing_vars = len(self.missing_variables)
+      if num_missing_vars > 0:
+        print(f"[TypeParser] Warning: {num_missing_vars} Variables were not found in the symbol table:")
+        for missing_var in self.missing_variables:
+          print(f" - '{missing_var.name}' @ {'None' if missing_var.location is None else hex(missing_var.location)}")
+          print(missing_var.die)
+      if num_inval_vars == 0 and num_missing_vars == 0:
+        print(f"[TypeParser] Info: Finished checking locations with no warnings.")
+
+      print(f"[TypeParser] Info: Computing physical addresses.")
+      self.variables_with_physical_locations = self._compute_physical_locations()
+      num_var_with_phy = len(self.variables_with_physical_locations)
+      num_vars = len(self.get_tags_by_class(TypeParser.Variable))
+      print(f"[TypeParser] Info: Added physical addresses to {num_var_with_phy} of {num_vars} variables.")
+
     print(f"[TypeParser] Info: Finished Type Extraction.")
     print(f"[TypeParser] Info: {len(self.get_tags())} TAGs extracted:")
     for cls, hash_dict in self._TAG_class_hash_dict.items():
@@ -2158,6 +2193,46 @@ class TypeParser:
                                 '{attr_value.__class__.__name__}' has an unknown reference detection type.""")
     return invalid_references
 
+  def _validate_variable_locations(
+      self
+    ) -> tuple[list[tuple[TypeParser.Variable, list[int]]], 
+               list[TypeParser.Variable]]:
+    invalid_locations = []
+    missing_variables = []
+    for var in self.get_tags_by_class(TypeParser.Variable):
+      assert isinstance(var, TypeParser.Variable)
+      if var.name is not None and var.location is not None and var.location != 0:
+        symbols = self.symtab.get_symbol_by_name(var.name) or []
+        possible_locations = [sym.entry.st_value for sym in symbols]
+        if len(possible_locations) == 0:
+          missing_variables.append(var)
+        elif var.location not in possible_locations:
+          invalid_locations.append((var, possible_locations))
+    return invalid_locations, missing_variables
+
+  def _compute_physical_locations(self) -> list[TypeParser.Variable]:
+    completed_vars: list[TypeParser.Variable] = []
+    for var in self.get_tags_by_class(TypeParser.Variable):
+      assert isinstance(var, TypeParser.Variable)
+      if var.name is None or var.location is None or var.location == 0:
+        continue
+      # Determine if the section of the variable is to be loaded
+      for section in self.elffile.iter_sections():
+        if var.location >= section.header.sh_addr and var.location < section.header.sh_addr + section.header.sh_size:
+          if section.header.sh_type == 'SHT_NOBITS':
+            # Section will not be loaded: LMA = VMA
+            var.set_physical_location(var.location)
+            completed_vars.append(var)
+          else:
+            # Determine the segment to compute the physical address (LMA and VMA may differ)
+            for segment in self.elffile.iter_segments():
+              if var.location >= segment.header.p_vaddr and var.location < segment.header.p_vaddr + segment.header.p_memsz:
+                var.set_physical_location(var.location - segment.header.p_vaddr + segment.header.p_paddr)
+                completed_vars.append(var)
+                break
+          break
+    return completed_vars
+
   def _is_tag_in_tag_list(self, tag: TypeParser.AbstractTAG) -> bool:
     tag_cls = tag.__class__
     tag_hash = hash(tag)
@@ -2236,7 +2311,7 @@ class TypeParser:
 
     # De-init the tag to remove
     if deinit:
-      tag_to_remove.deinit(replacement)
+      tag_to_remove.deinit(replacement=replacement)
 
   def resort_TAG(self, tag: TypeParser.AbstractTAG):
     # Remove the tag from the current dicts exactly
