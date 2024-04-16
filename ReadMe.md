@@ -257,10 +257,9 @@ An Enumerator JSON Object has the following properties:
 A pointer or reference entry has the following properties:
 * `"datatype": "pointer"` or `"reference"` for a pointer or reference, respectively.
 * `"datawidth"`: An integer representing the width in bytes used to hold the address of the referenced type.
-* `"mapping"`_(Optional)_: If the pointer or reference points to a type which has a debug entry on the root-level, the `"mapping"` property is a string with the name of that root-level entry.
-* `"type"`_(Optional)_: If the pointer or reference points to a type which does not have a debug entry on the root-level, the `"type"` property is a JSON object containing the debug information of the type.
+* `"type"`_(Optional)_: A JSON object containing the debug information of the type. If the type is expanded at root level, it contains a `"mapping"` to the type, otherwise it contains the type itself.
 
-If the pointer or reference points to a specific type, the entry has either a `"type"` or `"mapping"` property. If neither property is present, the type is assumed to be unknown or 'void'. Note that the type will be recursively expanded if it's a typedef, until the type is either represented at the root level (in which case a `"mapping"` property is present), or referenced type is not typedef.
+If the pointer or reference points to a specific type, the entry has a `"type"` property. Otherwise, the type is assumed to be unknown or 'void'. Note that the type will be recursively expanded if it's a typedef, until the type is either represented at the root level (in which case a `"mapping"` property is present), or referenced type is not typedef.
 
 ### Array
 

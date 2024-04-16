@@ -262,9 +262,7 @@ class DebugInfoExporter:
     if pointer.type is not None:
       pointed_type = self._trace_next_mapped_type(pointer.type, mappings)
       if pointed_type is not None:
-        pointed_type_name = pointed_type.get_scoped_name(self.NAMESPACE_SEPARATOR)
-        if pointed_type_name is not None:
-          desc["mapping"] = pointed_type_name
+        desc["type"] = self._export_type(pointed_type, False, mappings)
       else:
         desc["type"] = self._export_type(pointer.type, False, mappings)
     return desc
@@ -279,9 +277,7 @@ class DebugInfoExporter:
     if reference.type is not None:
       referenced_type = self._trace_next_mapped_type(reference.type, mappings)
       if referenced_type is not None:
-        referenced_type_name = referenced_type.get_scoped_name(self.NAMESPACE_SEPARATOR)
-        if referenced_type_name is not None:
-          desc["mapping"] = referenced_type_name
+        desc["type"] = self._export_type(referenced_type, False, mappings)
       else:
         desc["type"] = self._export_type(reference.type, False, mappings)
     return desc
