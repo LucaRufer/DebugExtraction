@@ -789,7 +789,7 @@ def main():
   # Convert the common arguments
   export_all = args.all
   export_classes = [DebugInfoExporter.EXPORTABLE_CLASSES[str(class_name)] for class_name in args.classes]
-  export_types = args.types
+  export_types: list[str] = args.types
   output_file = args.output
   skip_errors = args.skip_errors
   export_comments = args.export_comments
@@ -797,8 +797,10 @@ def main():
   source_path_subst = list(zip(args.source_path_subst[::2], args.source_path_subst[1::2]))
 
   # Type names
-  if len(export_types) == 0:
-    export_types = None
+  if export_types is None or len(export_types) == 0:
+    type_names = None
+  else:
+    type_names = export_types
 
   # Check source
   if args.source == "local":
@@ -830,7 +832,7 @@ def main():
                                         export_comments=export_comments,
                                         fileHandler = fileHandler,
                                         elf_file_modification_time=elf_file_modification_time,
-                                        type_names = export_types)
+                                        type_names = type_names)
 
   # Exporting keyword arguments
   export_kw_args = {
