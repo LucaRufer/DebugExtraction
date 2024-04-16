@@ -135,12 +135,9 @@ class DebugInfoExporter:
       desc["identifier"] = member.name
 
     if member.type is not None:
-      if member.type in mappings and (member_type_name := member.type.get_name()) is not None:
-        desc["mapping"] = member_type_name
-      else:
-        desc.update(self._export_type(member.type, False, mappings))
-
-    if (member_width := member.byte_size()) is not None:
+      desc["type"] = self._export_type(member.type, False, mappings)
+    if (member_width := member.byte_size()) is not None and \
+        (member.type is None or member.type.byte_size() is None or member_width != member.type.byte_size()):
       desc["datawidth"] = member_width
     if member.bit_size:
       desc["bit_size"] = member.bit_size

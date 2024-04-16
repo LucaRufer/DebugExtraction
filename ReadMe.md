@@ -221,8 +221,8 @@ Note that an unnamed (anonymous) entry will be represented the same way as a roo
 
 A Member entry has the following properties:
 * `"identifer"`_(Optional)_: A string providing an identifier for the member. Only present if the member is named.
-* `"mapping"`_(Optional)_: If the type of the member is exported at the root level, the `"mapping"` property contains a string corresponding the name of the type.
-* `"datawidth"`_(Optional)_: An integer representing the width in bytes of the data type. Only present if the size of the member is known.
+* `"type"`_(Optional)_: A nested entry containing the type of the member. If the type of the member is exported at the root level, the nested `"mapping"` property contains a string corresponding the name of the type.
+* `"datawidth"`_(Optional)_: An integer representing the width in bytes of the data type. Only present if the size of the member is known and different from the value given in the `"type"` property.
 * `"bit_size"`_(Optional)_: Number of bits the member occupies. Only used if the member occupies a non-integer amount of bytes.
 * `"byte_offset"`_(Optional)_: If the member has a known offset in memory relative to the location of the containing structure, union or class, the offset in bytes is given as an integer in this property.
 * `"bit_offset"`_(Optional)_: If the member has a known bit offset in memory relative to the location of the containing structure, union or class, the offset in bit is given as an integer in this property. Note that both the `"byte_offset"` and the `"bit_offset"` property have to be considered to compute the correct location of the member. The `"bit_offset"` property is omitted if its value is 0.
