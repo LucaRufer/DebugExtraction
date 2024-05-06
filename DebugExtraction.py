@@ -356,6 +356,13 @@ class DebugInfoExporter:
       elif comment_before is None and comment_after is not None:
         desc["comment"] = comment_after.strip()
     return desc
+  
+  def _export_declaration(self, decl: TypeParser.Declaration) -> JSONObject:
+    desc = {}
+    desc["declaration_file"] = decl.file_name
+    desc["declaration_line"] = decl.line
+    desc["declaration_column"] = decl.column
+    return desc
 
   def _export_type(self,
                    type: TypeParser.AbstractTAG,
@@ -404,6 +411,10 @@ class DebugInfoExporter:
       desc = self._export_variable(type, mappings)
     else:
       raise Exception(f"Type {type.__class__.__name__} of {type.name} has no known export pattern.")
+    
+    # Export Declaration
+    if self.export_declarations and unpack:
+      desc.update(self._export_declaration(type.decl))
 
     # Export comments
     if self.export_comments and unpack:
@@ -691,12 +702,14 @@ class DebugInfoExporter:
                elf_file: BytesIO|str,
                skip_errors: bool = True,
                export_comments: bool = True,
+               export_declarations: bool = True,
                fileHandler: FileHandler|None = None,
                elf_file_modification_time: datetime|None = None,
                type_names: None|list[str] = None,
                ) -> None:
     self.skip_errors = skip_errors
     self.export_comments = export_comments
+    self.export_declarations = export_declarations
 
     self.fileHandler = fileHandler if fileHandler is not None else FileHandler()
     if isinstance(elf_file, str):
@@ -736,6 +749,8 @@ def main():
                              help="""Export types without an associated name like anonymous (or unused) enumerations, structs
                                      and unions and function declarations.""")
   export_parser.add_argument(      '--export-comments', action='store_true', default=False,
+                             help="""Export declaration file, line and column of each type.""")
+  export_parser.add_argument(      '--export-declarations', action='store_true', default=False,
                              help="""Export comments from the source files of the types.""")
   export_parser.add_argument(      '--source-path-subst', nargs=2, action='extend', default=[],
                              help="""Usage: --source-path-subst <build/dir> <source/dir>
@@ -786,6 +801,7 @@ def main():
   output_file = args.output
   skip_errors = args.skip_errors
   export_comments = args.export_comments
+  export_declarations = args.export_declarations
   include_unnamed = args.include_unnamed
   source_path_subst = list(zip(args.source_path_subst[::2], args.source_path_subst[1::2]))
 
@@ -823,6 +839,7 @@ def main():
   debugInfoExporter = DebugInfoExporter(elf_file=elf_file,
                                         skip_errors=skip_errors,
                                         export_comments=export_comments,
+                                        export_declarations=export_declarations,
                                         fileHandler = fileHandler,
                                         elf_file_modification_time=elf_file_modification_time,
                                         type_names = type_names)

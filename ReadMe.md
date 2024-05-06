@@ -91,6 +91,10 @@ Currently, comment exporting is only supported for `C` and `C++`. For details on
 
 In order to export a comment, the tool searches for the closest comment before and after the declaration. If the closest comment before the declaration is on the same line as the declaration, it is exported. If the closest comment before the declaration is not on the same line, ot is only exported if the line of the beginning of the comment consists only of whitespace characters before the comment and if all characters between the end of the comment and the line of the declaration are whitespace characters. The closest comment after the declaration is only exported if it is either on the same line as the declaration, or on the following line with only whitespace characters before the start of the comment.
 
+### Exporting Declarations
+
+The declaration file, line and column of each type can be enabled using the `--export-declarations` flag. For details on how declarations are exported, see [Output file format](#output-file-format)
+
 ### Specifying an Output File
 
 A output file can be specified with the `-o <output file>.json` or `--output <output file>.json` flag. By default, the exported type descriptions will be exported into `export.json`.
@@ -143,11 +147,14 @@ Other common properties are the following:
 * `"type"`: A JSON object representing the underlying type  of the debug information. A type is used when the underlying type is not already exported at the lowest (root) level, which is typically the case for unnamed types like anonymous enumerations, structures and unions or unnamed subroutines.
 * `"mapping"`: A string contaning the `"name"` of another debug information entry represented at the root level. A mapping is used to represent nested information, for example if a structure contains another structure or an enumeration.
 
-If the `--export-comments` flag is used, types may have the following propteries:
-
-The following sections contain more detailed descriptions for all debug information types.
+If the `--export-comments` flag is used, types may have the following properties:
 * `"comment"`: If only one comment (either before or after) is found, the comment will be exported as a string in the `"comment"` property.
 * `"commentBefore"` and `"commentAfter"`: If a comments are found before and after the declaration of the type, they are exported as a string into `"commentBefore"` and `"commentAfter"`, respectively. It is up to the user to determine which of the two comments is actually useful.
+
+If the `--export-declarations` flag is used, types may have the following properties:
+* `"declaration_file"`: A integer indicating the file in which the declaration is made. Note that the path may be relative to the compilation directory.
+* `"declaration_line"`: A integer indicating the line on which the declaration is made
+* `"declaration_column"`: A integer indicating the column in which the declaration is made
 
 ### Base Type
 
